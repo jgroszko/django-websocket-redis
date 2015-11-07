@@ -99,4 +99,12 @@ function WS4Redis(options, $) {
 	this.send_message = function(message) {
 		ws.send(message);
 	};
+
+        this.dispose = function() {
+	        clearInterval(heartbeat_interval);
+	        clearTimeout(timer);
+	        ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+	        ws.close();
+	        ws = null;
+	};
 }
