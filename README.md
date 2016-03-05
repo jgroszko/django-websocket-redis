@@ -5,7 +5,7 @@ Project home: https://github.com/jrief/django-websocket-redis
 
 Detailed documentation on [ReadTheDocs](http://django-websocket-redis.readthedocs.org/en/latest/).
 
-Online demo: http://websocket.aws.awesto.com/
+Online demo: http://django-websocket-redis.awesto.com/
 
 Websockets for Django using Redis as message queue
 --------------------------------------------------
@@ -14,10 +14,17 @@ messaging it uses the [Redis](http://redis.io/) datastore and in a production en
 intended to work under [uWSGI](http://projects.unbit.it/uwsgi/) and behind [NGiNX](http://nginx.com/)
 or [Apache](http://httpd.apache.org/docs/2.4/mod/mod_proxy_wstunnel.html) version 2.4.5 or later.
 
-New in 0.4.4
+
+New in 0.4.5
 ------------
-* Added method ``release()`` to ``RedisSubscriber`` and calling this method each time a Websocket
-  closes, for whatever reason. This should avoid some reported memory issues.
+* Created 1 requirements file under ``examples/chatserver/requirements.txt``.
+* Renamed chatclient.py to test_chatclient.py - for django-nose testrunner.
+* Migrated example project to django 1.7.
+* Edited ``docs/testing.rst`` to show new changes for using example project.
+* Added support for Python 3.3 and 3.4.
+* Added support for Django-1.8
+* Removes the check for middleware by name.
+
 
 Features
 --------
@@ -33,7 +40,7 @@ Features
 * Optionally persiting messages, allowing server reboots and client reconnections.
 
 If unsure, if this proposed architecture is the correct approach on how to integrate Websockets with Django, then
-please read Roberto De Ioris article about
+please read Roberto De Ioris (BDFL of uWSGI) article about
 [Offloading Websockets and Server-Sent Events AKA “Combine them with Django safely”](http://uwsgi-docs.readthedocs.org/en/latest/articles/OffloadingWebsocketsAndSSE.html).
 
 Please also consider, that whichever alternative technology you use, you always need a message queue,

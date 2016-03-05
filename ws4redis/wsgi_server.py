@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 import sys
+import six
+from six.moves import http_client
 from redis import StrictRedis
 import django
 if django.VERSION[:2] >= (1, 7):
     django.setup()
 from django.conf import settings
-from django.core.handlers.wsgi import WSGIRequest, logger, STATUS_CODE_TEXT
+from django.contrib.auth import get_user
+from django.core.handlers.wsgi import WSGIRequest, logger
 from django.core.exceptions import PermissionDenied
 from django import http
 from django.utils.encoding import force_str
@@ -48,14 +51,12 @@ class WebsocketWSGIServer(object):
     def process_request(self, request):
         request.session = None
         request.user = None
-        if 'django.contrib.sessions.middleware.SessionMiddleware' in settings.MIDDLEWARE_CLASSES:
+        session_key = request.COOKIES.get(settings.SESSION_COOKIE_NAME, None)
+        if session_key is not None:
             engine = import_module(settings.SESSION_ENGINE)
-            session_key = request.COOKIES.get(settings.SESSION_COOKIE_NAME, None)
-            if session_key:
-                request.session = engine.SessionStore(session_key)
-                if 'django.contrib.auth.middleware.AuthenticationMiddleware' in settings.MIDDLEWARE_CLASSES:
-                    from django.contrib.auth import get_user
-                    request.user = SimpleLazyObject(lambda: get_user(request))
+            request.session = engine.SessionStore(session_key)
+            request.user = SimpleLazyObject(lambda: get_user(request))
+
 
     def process_subscriptions(self, request):
         agreed_channels = []
@@ -112,7 +113,9 @@ class WebsocketWSGIServer(object):
                             websocket.send(sendmsg)
                     else:
                         logger.error('Invalid file descriptor: {0}'.format(fd))
-                if private_settings.WS4REDIS_HEARTBEAT:
+                # Check again that the websocket is closed before sending the heartbeat,
+                # because the websocket can closed previously in the loop.
+                if private_settings.WS4REDIS_HEARTBEAT and not websocket.closed:
                     websocket.send(private_settings.WS4REDIS_HEARTBEAT)
         except WebSocketError as excpt:
             logger.warning('WebSocketError: {}'.format(excpt), exc_info=sys.exc_info())
@@ -137,8 +140,11 @@ class WebsocketWSGIServer(object):
                 websocket.close(code=1001, message='Websocket Closed')
             else:
                 logger.warning('Starting late response on websocket')
-                status_text = STATUS_CODE_TEXT.get(response.status_code, 'UNKNOWN STATUS CODE')
+                status_text = http_client.responses.get(response.status_code, 'UNKNOWN STATUS CODE')
                 status = '{0} {1}'.format(response.status_code, status_text)
-                start_response(force_str(status), response._headers.values())
+                headers = response._headers.values()
+                if six.PY3:
+                    headers = list(headers)
+                start_response(force_str(status), headers)
                 logger.info('Finish non-websocket response with status code: {}'.format(response.status_code))
         return response

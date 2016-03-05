@@ -17,27 +17,31 @@ the SQLite database
 	# activate virtualenv
 	source /path/to/virtualenv/bin/activate
 
-	# pip
-	pip install /django-websocket/redis/examples/chatserver/requirements.txt
+	# Make sure you're in the examples/ directory
+	cd examples/
+
+	# install pip requirements
+	pip install -r requirements.txt
 
 	# Django 1.7+
 	# Load test data
-	./manage.py loaddata chatserver/fixtures/data.json	# if needed
-	./manage.py makemigrations
 	./manage.py migrate
+	./manage.py loaddata chatserver/fixtures/data.json
 
 and then start the server
 
 .. code-block:: bash
 
-	# start Redis Server 
+	# start Redis Server from a different shell prompt
 	# (or follow quickstart instructions http://redis.io/topics/quickstart)
+	redis-server
 
 	# start Django
 	./manage.py runserver
 
-Point a browser onto http://localhost:8000/admin/, login and add additional users. Enable their
-staff status, so that they can use the admin interface to log into the testing application.
+Point a browser onto http://localhost:8000/admin/, login as the 'admin' user using the password
+'secret' and add additional users. Enable their staff status, so that they can use the admin
+interface to log into the testing application.
 
 With http://localhost:8000/chat/ you can send messages to specific users, provided they are
 logged in. To log in as another user, use Django's admin interface.
@@ -61,17 +65,10 @@ Both chat server tests from above should run in this configuration.
 
 Running Unit Tests
 ==================
-To run the unit tests, a few additional packages have to be installed
 
 .. code-block:: bash
 
-	pip install -r examples/chatserver/tests/requirements.txt
-
-Run the tests
-
-.. code-block:: bash
-
-	cd examples && ./manage.py test chatserver --settings=chatserver.tests.settings
+	./manage.py test chatserver --settings=chatserver.tests.settings
 
 Currently it is not possible to simulate more than one client at a time. Django's built in
 LiveServerTestCase_ can not handle more than one simultaneous open connection, and thus more
@@ -83,13 +80,21 @@ Running Stress Tests
 To run stress tests, change into directory ``stress-tests``. Since stress tests shall check the
 performance in a real environment, the server and the testing client must be started independently.
 
-First start the server, as you would in productive environments
+First start the server, as you would in productive environments.
 
 .. code-block:: bash
 
-	uwsgi --virtualenv /path/to/virtualenvs --http :8000 --gevent 1000 --http-websockets --master --workers 2 --module wsgi_websocket
+	# Open a new shell and activate your virtualenv in it
+	source /path/to/virtualenv/bin/activate
 
-then start one of the testing clients, using the nose_ framework
+	# Install the uwsgi package
+	pip install uwsgi
+
+	# Then start the uwsgi server
+	uwsgi --http :8000 --gevent 1000 --http-websockets --master --workers 2 --module wsgi_websocket
+
+then go back to the other shell (also with the virtualenv activated) and start one of the testing
+clients, using the nose_ framework
 
 .. code-block:: bash
 

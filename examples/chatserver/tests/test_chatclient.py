@@ -2,16 +2,22 @@
 import os
 import time
 import requests
+import six
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.sessions.backends.db import SessionStore
-from django.test import LiveServerTestCase, TestCase
+from django.test import LiveServerTestCase
 from django.test.client import RequestFactory
-from django.utils.importlib import import_module
+from importlib import import_module
+
+from django.core.servers.basehttp import WSGIServer
 from websocket import create_connection, WebSocketException
 from ws4redis.django_runserver import application
 from ws4redis.publisher import RedisPublisher
 from ws4redis.redis_store import RedisMessage, SELF
+
+
+if six.PY3:
+    unichr = chr
 
 
 class WebsocketTests(LiveServerTestCase):
@@ -25,6 +31,7 @@ class WebsocketTests(LiveServerTestCase):
 
     def setUp(self):
         self.facility = u'unittest'
+        self.prefix = getattr(settings, 'WS4REDIS_PREFIX', 'ws4redis')
         self.websocket_base_url = self.live_server_url.replace('http:', 'ws:', 1) + u'/ws/' + self.facility
         self.message = RedisMessage(''.join(unichr(c) for c in range(33, 128)))
         self.factory = RequestFactory()
@@ -49,6 +56,8 @@ class WebsocketTests(LiveServerTestCase):
         ws = create_connection(websocket_url)
         self.assertTrue(ws.connected)
         result = ws.recv()
+        if six.PY3:
+            self.message = self.message.decode()
         self.assertEqual(result, self.message)
         ws.close()
         self.assertFalse(ws.connected)
@@ -59,6 +68,8 @@ class WebsocketTests(LiveServerTestCase):
         self.assertTrue(ws.connected)
         ws.send(self.message)
         result = ws.recv()
+        if six.PY3:
+            self.message = self.message.decode()
         self.assertEqual(result, self.message)
         ws.close()
         self.assertFalse(ws.connected)
@@ -75,7 +86,7 @@ class WebsocketTests(LiveServerTestCase):
         result = publisher.fetch_message(request, self.facility, 'broadcast')
         self.assertEqual(result, self.message)
         # now access Redis store directly
-        self.assertEqual(publisher._connection.get('ws4redis:broadcast:' + self.facility), self.message)
+        self.assertEqual(publisher._connection.get(self.prefix + ':broadcast:' + self.facility), self.message)
 
     def test_subscribe_user(self):
         logged_in = self.client.login(username='john', password='secret')
@@ -90,6 +101,8 @@ class WebsocketTests(LiveServerTestCase):
         ws = create_connection(websocket_url, header=header)
         self.assertTrue(ws.connected)
         result = ws.recv()
+        if six.PY3:
+            self.message = self.message.decode()
         self.assertEqual(result, self.message)
         ws.close()
         self.assertFalse(ws.connected)
@@ -109,7 +122,7 @@ class WebsocketTests(LiveServerTestCase):
         request.user = User.objects.get(username='john')
         result = publisher.fetch_message(request, self.facility, 'user')
         self.assertEqual(result, self.message)
-        request.user = None 
+        request.user = None
         result = publisher.fetch_message(request, self.facility, 'user')
         self.assertEqual(result, None)
 
@@ -126,6 +139,8 @@ class WebsocketTests(LiveServerTestCase):
         ws = create_connection(websocket_url, header=header)
         self.assertTrue(ws.connected)
         result = ws.recv()
+        if six.PY3:
+            self.message = self.message.decode()
         self.assertEqual(result, self.message)
         ws.close()
         self.assertFalse(ws.connected)
@@ -165,6 +180,8 @@ class WebsocketTests(LiveServerTestCase):
         ws = create_connection(websocket_url, header=header)
         self.assertTrue(ws.connected)
         result = ws.recv()
+        if six.PY3:
+            self.message = self.message.decode()
         self.assertEqual(result, self.message)
         ws.close()
         self.assertFalse(ws.connected)
@@ -192,7 +209,10 @@ class WebsocketTests(LiveServerTestCase):
         websocket_url = self.live_server_url + u'/ws/foobar'
         response = requests.get(websocket_url)
         self.assertEqual(response.status_code, 400)
-        self.assertIn('upgrade to a websocket', response.content)
+        content = response.content
+        if six.PY3:
+            content = content.decode()
+        self.assertIn('upgrade to a websocket', content)
         response = requests.post(websocket_url, {})
         self.assertEqual(response.status_code, 400)
 
@@ -205,9 +225,9 @@ class WebsocketTests(LiveServerTestCase):
 
     def test_defining_multiple_publishers(self):
         pub1 = RedisPublisher(facility=self.facility, broadcast=True)
-        self.assertEqual(pub1._publishers, set(['ws4redis:broadcast:' + self.facility]))
+        self.assertEqual(pub1._publishers, set([self.prefix + ':broadcast:' + self.facility]))
         pub2 = RedisPublisher(facility=self.facility, users=['john'])
-        self.assertEqual(pub2._publishers, set(['ws4redis:user:john:' + self.facility]))
+        self.assertEqual(pub2._publishers, set([self.prefix + ':user:john:' + self.facility]))
 
     def test_forbidden_channel(self):
         websocket_url = self.websocket_base_url + u'?subscribe-broadcast&publish-broadcast'
@@ -216,3 +236,45 @@ class WebsocketTests(LiveServerTestCase):
             self.fail('Did not reject channels')
         except WebSocketException:
             self.assertTrue(True)
+
+    def test_close_connection(self):
+
+        class Counter:
+            def __init__(self):
+                self.value = 0
+
+        counter = Counter()
+        old_handle_error = WSGIServer.handle_error
+
+        def handle_error(self, *args, **kwargs):
+            # we need a reference to an object for this to work not a simple variable
+            counter.value += 1
+            return old_handle_error(self, *args, **kwargs)
+
+        WSGIServer.handle_error = handle_error
+
+        statuses = [1000, 1001, 1002, 1003, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1015, ]
+        websocket_url = self.websocket_base_url + u'?subscribe-broadcast&publish-broadcast'
+        for status in statuses:
+            value_before = counter.value
+            ws = create_connection(websocket_url)
+            self.assertTrue(ws.connected)
+            ws.close(status)
+            self.assertFalse(ws.connected)
+            self.assertEqual(value_before, counter.value,
+                             'Connection error while closing with {}'.format(status))
+
+    def test_protocol_support(self):
+        protocol = 'unittestprotocol'
+        websocket_url = self.websocket_base_url + u'?subscribe-broadcast&publish-broadcast'
+        ws = create_connection(websocket_url, subprotocols=[protocol])
+        self.assertTrue(ws.connected)
+        self.assertIn('sec-websocket-protocol', ws.headers)
+        self.assertEqual(protocol, ws.headers['sec-websocket-protocol'])
+        ws.close()
+        self.assertFalse(ws.connected)
+        ws = create_connection(websocket_url)
+        self.assertTrue(ws.connected)
+        self.assertNotIn('sec-websocket-protocol', ws.headers)
+        ws.close()
+        self.assertFalse(ws.connected)
