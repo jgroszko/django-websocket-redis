@@ -128,6 +128,10 @@ Ensure that your template context contains at least these processors:
 	    ...
 	)
 
+**Websocket for Redis** allows each client to subscribe and to publish on every possible
+channel. To restrict and control access, the ``WS4REDIS_ALLOWED_CHANNELS`` options should
+be set to a callback function anywhere inside your project. See the example and warnings in
+:ref:`SafetyConsiderations`.
 
 Check your Installation
 -----------------------
@@ -136,7 +140,7 @@ websockets. Change into the ``examples`` directory and start a sample chat serve
 
 .. code-block:: bash
 
-	./manage.py syncdb
+	./manage.py migrate
 	... create database tables
 	... answer the questions
 	./manage.py runserver

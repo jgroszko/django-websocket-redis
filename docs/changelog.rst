@@ -4,13 +4,24 @@
 Release History
 ===============
 
-0.4.7 develop
--------------
+0.4.7
+-----
+Improvements to the javascript API:
 
+* Performing reconnection attempts when the first connection (on instantiation) fails.
+* Adding the 'close()' method to enable closing the connection explicitly. When the connection is
+  closed calling this method, there will be no reconnection attempts. In order to connect again,
+  the client must be re-instantiated.
+* Adding 'connecting' and 'disconnected' callback options. The first is fired right before the
+  Websocket is being instantiated, while tha last is fired after connection is closed.
+* Adding the following methods to check websocket status: ``is_connecting()``, ``is_connected()``,
+  ``is_closing()``, ``is_closed()``.
+* Replaced ``STATIC_URL`` against ``{% static %}`` in all templates.
+* Keep track on opened websockets.
 
 0.4.6
 -----
-* Added support for the Sec-WebSocket-Protocol header. Thanks to Eric Junge.
+* Added support for the Sec-WebSocket-Protocol header. Thanks to Erwin Junge.
 * Fixed bug in unpacking binary websocket protocol.
 
 0.4.5

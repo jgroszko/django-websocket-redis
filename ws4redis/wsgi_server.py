@@ -37,6 +37,7 @@ class WebsocketWSGIServer(object):
         self.possible_channels = Subscriber.subscription_channels + Subscriber.publish_channels
         self._redis_connection = redis_connection and redis_connection or StrictRedis(**private_settings.WS4REDIS_CONNECTION)
         self.Subscriber = Subscriber
+        self._websockets = set()  # a list of currently active websockets
 
     def assure_protocol_requirements(self, environ):
         if environ.get('REQUEST_METHOD') != 'GET':
@@ -69,6 +70,10 @@ class WebsocketWSGIServer(object):
                 echo_message = True
         return agreed_channels, echo_message
 
+    @property
+    def websockets(self):
+        return self._websockets
+
     def __call__(self, environ, start_response):
         """
         Hijack the main loop from the original thread and listen on events on the Redis
@@ -86,7 +91,16 @@ class WebsocketWSGIServer(object):
             channels, echo_message = self.process_subscriptions(request)
             if callable(private_settings.WS4REDIS_ALLOWED_CHANNELS):
                 channels = list(private_settings.WS4REDIS_ALLOWED_CHANNELS(request, channels))
+            elif private_settings.WS4REDIS_ALLOWED_CHANNELS is not None:
+                try:
+                    mod, callback = private_settings.WS4REDIS_ALLOWED_CHANNELS.rsplit('.', 1)
+                    callback = getattr(import_module(mod), callback, None)
+                    if callable(callback):
+                        channels = list(callback(request, channels))
+                except AttributeError:
+                    pass
             websocket = self.upgrade_websocket(environ, start_response)
+            self._websockets.add(websocket)
             logger.debug('Subscribed to channels: {0}'.format(', '.join(channels)))
             subscriber.set_pubsub_channels(request, channels)
             websocket_fd = websocket.get_file_descriptor()
@@ -117,6 +131,9 @@ class WebsocketWSGIServer(object):
                 # because the websocket can closed previously in the loop.
                 if private_settings.WS4REDIS_HEARTBEAT and not websocket.closed:
                     websocket.send(private_settings.WS4REDIS_HEARTBEAT)
+                # Remove websocket from _websockets if closed
+                if websocket.closed:
+                    self._websockets.remove(websocket)
         except WebSocketError as excpt:
             logger.warning('WebSocketError: {}'.format(excpt), exc_info=sys.exc_info())
             response = http.HttpResponse(status=1001, content='Websocket Closed')

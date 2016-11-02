@@ -42,8 +42,8 @@ A minimal client in pure JavaScript
 	    ws.send(msg);
 	}
 
-Client JavaScript depending on jQuery
--------------------------------------
+Client JavaScript depending on jQuery (recommended)
+---------------------------------------------------
 When using jQuery, clients can reconnect on broken Websockets. Additionally the client awaits for
 heartbeat messages and reconnects if too many of them were missed.
 
@@ -60,20 +60,37 @@ and access the Websocket code:
 	jQuery(document).ready(function($) {
 	    var ws4redis = WS4Redis({
 	        uri: '{{ WEBSOCKET_URI }}foobar?subscribe-broadcast&publish-broadcast&echo',
+	        connecting: on_connecting,
+	        connected: on_connected,
 	        receive_message: receiveMessage,
+	        disconnected: on_disconnected,
 	        heartbeat_msg: {{ WS4REDIS_HEARTBEAT }}
 	    });
-	
+
 	    // attach this function to an event handler on your site
 	    function sendMessage() {
 	        ws4redis.send_message('A message');
 	    }
-	
+	    
+	    function on_connecting() {
+	        alert('Websocket is connecting...');
+	    }
+	    
+	    function on_connected() {
+	        ws4redis.send_message('Hello');
+	    }
+	    
+	    function on_disconnected(evt) {
+	        alert('Websocket was disconnected: ' + JSON.stringify(evt));
+	    }
+
 	    // receive a message though the websocket from the server
 	    function receiveMessage(msg) {
 	        alert('Message from Websocket: ' + msg);
 	    }
 	});
+
+If you want to close the connection explicitly, you could call **ws4redis.close()**. This way, the client will not perform reconnection attempts.
 
 This example shows how to configure a Websocket for bidirectional communication.
 
@@ -114,7 +131,7 @@ message to all clients listening on the named facility, referred here as ``fooba
 
 	from ws4redis.publisher import RedisPublisher
 	from ws4redis.redis_store import RedisMessage
-	
+
 	redis_publisher = RedisPublisher(facility='foobar', broadcast=True)
 	message = RedisMessage('Hello World')
 	# and somewhere else
@@ -157,7 +174,7 @@ group where this user is member of.
 .. code-block:: python
 
 	redis_publisher = RedisPublisher(facility='foobar', groups=['chatters'])
-	
+
 	# and somewhere else
 	redis_publisher.publish_message('Hello World')
 
@@ -191,7 +208,7 @@ In this context the the magic item ``SELF`` refers to all clients owning the sam
 
 Publish for Broadcast, User, Group and Session
 ----------------------------------------------
-A Websocket initialized with the URL ``ws://www.example.com/ws/foobar?publish-broadcast``, 
+A Websocket initialized with the URL ``ws://www.example.com/ws/foobar?publish-broadcast``,
 ``ws://www.example.com/ws/foobar?publish-user`` or ``ws://www.example.com/ws/foobar?publish-session``
 will publish a message sent through the Websocket on the named Redis channel ``broadcast:foobar``,
 ``user:john:foobar`` and ``session:wnqd0gbw5obpnj50zwh6yaq2yz4o8g9x:foobar`` respectively.
@@ -207,7 +224,7 @@ whenever it requires them.
 	# if the publisher is required only for fetching messages, use an
 	# empty constructor, otherwise reuse an existing redis_publisher
 	redis_publisher = RedisPublisher()
-	
+
 	# and somewhere else
 	facility = 'foobar'
 	audience = 'any'
@@ -241,6 +258,8 @@ the client, immediately after he connects to the server.
 .. note:: By using client code, which automatically reconnects after the Websocket closes, one can
           create a setup which is immune against server and client reboots.
 
+.. _SafetyConsiderations:
+
 Safety considerations
 ---------------------
 The default setting of **Websocket for Redis** is to allow each client to subscribe and to publish
@@ -264,7 +283,7 @@ Disallow non authenticated users to subscribe or to publish on the Websocket:
 .. code-block:: python
 
 	from django.core.exceptions import PermissionDenied
-	
+
 	def get_allowed_channels(request, channels):
 	    if not request.user.is_authenticated():
 	        raise PermissionDenied('Not allowed to subscribe nor to publish on the Websocket!')
